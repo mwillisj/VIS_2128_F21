@@ -1,0 +1,402 @@
+---
+title: "Assignment 1 Tutorial"
+author: "Carole Voulgaris"
+date: "8/26/2021"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Assignment instructions
+
+Create at least five versions of a map with three layers: A base map image, a layer of polygons, and layer of points. All five maps should convey the same information. Experiment with alternative base maps. For the polygons, experiment with fill color, transparency, line colors, and line weights. For the points, experiment with shape, size, color, and transparency. The five versions you submit should include one or more that looks terrible and one or more that looks great.
+
+## Learning outcomes
+
+The purpose of this assignment is for you to demonstrate that you know how to:
+
+1. Load spatial datasets from a file
+2. Load a basemap image from the rosm package, using the ggspatial package
+3. Display multiple layers of spatial data on a map
+4. Modify the the display of spatial data
+
+## Prerequisites
+
+I'm assuming that you've already created an R project for this assignment, which I *highly* recommend you associate with a GitHub repo, and that you've already found the point file and the polygon file you want to work with for this assignment and added them to your project directory. For instructions on how to set all that up, see [this video](https://harvard.zoom.us/rec/share/edbRDTeqfwdWcOF9aAtpSuklG-W4fb1jGfKDLt964A6WXGZ1zNg6sbTC8FyDbaE7.ltd95WYqpMHPwJ7g?startTime=1630077709000){target="_blank"}. 
+
+You will also need to have installed the following packages:
+
+* `sf` for working with spatial data. 
+* `tidyverse` for a wide variety of data wrangling and data visualization tools.
+* `ggspatial` for adding some helpful features to our maps like basemaps, north arrows, and scale bars
+* `ggthemes` for some shortcuts for setting up themes for maps.
+
+If you don't have them installed already, you can install them using the `install.packages()` command. For example, to install the sf package, type `install.packages("sf")` into your console.
+
+Once you've installed the packages you need, you can load them.
+
+By default, your code chunk will start with the line ````{r}`. If you want to, you can name the code chunk by adding a name after the `r` within the brackets. You can also set some chunk options within the brackets. For example, when you load packages, you'll see a lot of messages that you don't necessarily want to include in your beautiful, formatted html file. To suppress those messages, you can use the setting `message=FALSE`. 
+
+So I'm starting the following code chunk with ````{r load packages, message=FALSE}`. This means the name of the code chunk is "load packages" and I don't want to see any of the package loading messages.
+
+```{r load packages, message=FALSE}
+library(sf)
+library(tidyverse)
+library(ggspatial)
+library(ggthemes)
+```
+
+## Loading a dataset
+
+Spatial datasets can come in a variety of data formats, including ESRI shapefiles, geoJSON files, and KMZ/KML files. One nice thing about the `sf` package in R is that it can read any of these formats using the `st_read` function.
+
+I currently have three spatial datasets saved in my project directory:
+
+* PlayLocs.geojson: A points layer in the geoJSON file format showing the locations of playgrounds in Cambridge
+* RECREATION_CommunityGardens.shp.zip: A zipped set of files in the ESRI shapefile format with a points layer showning the locations of community gardens in Cambridge
+* HistDist.kml: A KML file showing the boundaries of historic districts in Cambridge as a polygon layer
+
+I can load all three of these datasets from those files using the `st_read()` function.
+
+```{r read datasets, message=FALSE, results='hide', warning=FALSE}
+playgrounds <- st_read("PlayLocs.geojson")
+gardens <- st_read("RECREATION_CommunityGardens.shp.zip")
+historic <- st_read("HistDist.kml")
+```
+## Plotting one layer on a map.
+
+I can plot playground locations on a map using `ggplot()` `and geom_sf()`.
+
+What I'm doing here is saving the plot to an object I'll call `playground_plot`, and then I'm typing the name of that object to print the plot in my RMarkdown file.
+
+```{r simple playground plot}
+
+playground_plot <- ggplot(playgrounds) +
+  geom_sf()
+
+playground_plot
+
+```
+
+### Plotting to the plot window
+
+If you want the above plot to appear in the Plots tab of RStudio, just type `playground_plot` in your console. 
+
+One reason to do that might be to use the export button to copy the plot to your clipboard, but you could copy the plot to your clipboard by right-clicking on it in your RMarkdown file. 
+
+### Plotting to a file
+
+Another reason to display the plot in your plot window would be to export it to a pdf or an image file. But you can do that from code as well. In the example below, I'm creating a jpeg, a PNG, and a PDF file, where each image is 3 inches by 5 inches, with a resolution of 300 pixels per inch (ppi). You create each file with three lines of code, where the first line creates the file, the second line writes the plot to the file, and the third line closes the file.
+
+Note that for PDFs, you don't need to specify that the units are in inches, and you don't set the resolution.
+
+```{r write plot to a file, message=FALSE, results='hide'}
+jpeg("playgrounds.jpg", width = 5, height = 3, units = "in", res = 300)
+playground_plot
+dev.off()
+
+png("playgrounds.png", width = 5, height = 3, units = "in", res = 300)
+playground_plot
+dev.off()
+
+pdf("playgrounds.pdf", width = 5, height = 3)
+playground_plot
+dev.off()
+
+```
+
+## Changing point symbology
+
+Maybe I want to show playgrounds as something other that little black dots. I can adjust the shape, color, size,and transparency of points.
+
+### Point shapes
+
+Here are all the available point symbols included with R:
+
+```{r point shapes, include=FALSE}
+shapes <- ggpubr::show_point_shapes()
+```
+
+```{r, echo=FALSE}
+shapes
+```
+
+16 is the default, but you can specify which shape to use with the `shape` argument in `geom_sf()`. Let's try plotting the points as triangles.
+
+```{r}
+ggplot(playgrounds) +
+  geom_sf(shape = 17)
+
+```
+
+### Point colors
+
+You can fine a list of all the named colors in R [here](http://www.stat.columbia.edu/~tzheng/files/Rcolor.pdf){target="_blank"}. You can specify which color to use with the `color` argument in `geom_sf()` (`colour` also works). Let's try plotting the points as blue triangles.
+
+```{r}
+ggplot(playgrounds) +
+  geom_sf(shape = 17, color = "blue")
+
+```
+
+### Point sizes
+
+We can also adjust the point size. The default size is 1.5. Let's make our blue triangles much bigger.
+
+```{r}
+ggplot(playgrounds) +
+  geom_sf(shape = 17, color = "blue", size = 5)
+
+```
+
+### Point transparency
+
+We can also adjust the point transparency using the `alpha` argument in `geom_sf()`. Alpha values vary from 0 (totally transparent) to 1 (totally opaque). Let's make these points mostly transparent by setting alpha to 0.1.
+
+```{r}
+ggplot(playgrounds) +
+  geom_sf(shape = 17, color = "blue", size = 5, alpha = 0.1)
+
+```
+
+
+## Plotting multiple layers
+
+You can use `geom_sf()` multiple times to draw multiple layers. If you're drawing a different layer than the one specified in the initial `ggplot()` function, you'll need to specify it in the `geom_sf()` function.
+
+```{r plot three layers}
+ ggplot(playgrounds) +
+  geom_sf() +
+  geom_sf(data = historic) +
+  geom_sf(data = gardens)
+
+```
+
+Since we had saved the initial playgrounds plot, we can do the same thing by just adding to that initial plot.
+
+```{r layering onto saved plot}
+playground_plot +
+  geom_sf(data = historic) +
+  geom_sf(data = gardens)
+
+```
+
+### Draw order
+
+R will draw the layers in the order you list them. So in the above plot, we plotted the playgrounds, then the historic districts on top of that, and the community gardens on top of that. This could be a problem if the historic districts are covering up some of the playgrounds. We can fix this by changing the draw order.
+
+Note that it's fine to leave the `ggplot()` function empty if I always specify the dataset in `geom_sf()`.
+
+While I'm at it, I'll change the color of the gardens so I can distinguish them from the playgrounds.
+
+```{r}
+ ggplot() +
+  geom_sf(data = historic) +
+  geom_sf(data = playgrounds) +
+  geom_sf(data = gardens, color = "green")
+
+```
+
+## Polygon symbology
+
+For polygons, the `color` and `size` arguments in geom_sf will change the color and thickness of the outline. I can change the fill color and transparency using `fill` and `alpha`.
+
+```{r}
+ ggplot() +
+  geom_sf(data = historic, color = "red", 
+                           size = 3,
+                           fill = "blue",
+                           alpha = 0.5) +
+  geom_sf(data = playgrounds) +
+  geom_sf(data = gardens, color = "green")
+
+```
+
+## Adding a legend
+
+If we want to have a legend to interpret the symbology across multiple layers, we need to do things a little differently. 
+
+First of all, you can only have one legend interpreting color, so things get weird when you have a color specified for both points and polygons. I'll get rid of the outline on the polygons by setting `color` to `NA` and removing the `size` argument. The polygon fill indicates that this is a historic district, so I'll move the `fill` argument in the `aes()` function and just indicate that the the fill references a historic district. 
+
+Then I add the `scale_fill_manual()` function to create a legend indicating that historic districts are blue. I'm making the legend name blank, Otherwise, the default title for that legend will be "fill".
+
+```{r}
+ ggplot() +
+  geom_sf(data = historic, color = NA, alpha = 0.5,
+          aes(fill = "Historic District")) +
+  geom_sf(data = playgrounds) +
+  geom_sf(data = gardens, color = "green") +
+  scale_fill_manual(values = "blue", name = "")
+
+```
+
+I'll do something similar to create a legend for the point colors. Note that, by default, items in the legend will appear in alphabetical order, and that's the order in which you'll want to specify the colors in `scale_color_manual()`
+
+```{r}
+ ggplot() +
+  geom_sf(data = historic, color = NA, alpha = 0.5,
+          aes(fill = "Historic District")) +
+  geom_sf(data = playgrounds,
+          aes(color = "Playground")) +
+  geom_sf(data = gardens, 
+          aes(color = "Community garden")) +
+  scale_fill_manual(values = "blue", name = "") +
+  scale_color_manual(values = c("green", "black"), name = "") 
+
+```
+
+
+## Modifying the theme
+
+The gray panel background is rarely what you want on a map you're creating, and you may not want those gray boxes behind the points in the legend either. You can use the `theme()` function to change those settings.
+
+```{r}
+ggplot(playgrounds) +
+  geom_sf(aes(color = "Playground")) +
+  geom_sf(data = gardens, aes(color = "Community Garden")) +
+  geom_sf(data = historic, aes(fill = "Historic District"), alpha = 0.25, color = NA) +
+  scale_fill_manual(values = "goldenrod4", name = "") +
+  scale_color_manual(values = c("gold", "forestgreen"), name = "") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.key = element_rect(fill = "white"))
+
+```
+
+There are so many different settings you can modify with the `themes()` command. The `tidyverse` (or really, the `ggplot2` package, which is part of `tidyverse`) has some built-in themes that can save you having to specify so many things. `theme_void()` can work well for maps, since it removes all gridlines and tick-marks.
+
+```{r}
+ggplot(playgrounds) +
+  geom_sf(aes(color = "Playground")) +
+  geom_sf(data = gardens, aes(color = "Community Garden")) +
+  geom_sf(data = historic, aes(fill = "Historic District"), alpha = 0.25, color = NA) +
+  scale_fill_manual(values = "goldenrod4", name = "") +
+  scale_color_manual(values = c("gold", "forestgreen"), name = "") +
+  theme_void()
+
+```
+
+The `ggthemes` package has a bunch of additional themes to choose from, including `theme_map()` which was specifically designed with maps in mind. It's pretty similar to `theme_void()`, but it moved the legend to the bottom left.
+
+```{r}
+ggplot(playgrounds) +
+  geom_sf(aes(color = "Playground")) +
+  geom_sf(data = gardens, aes(color = "Community Garden")) +
+  geom_sf(data = historic, aes(fill = "Historic District"), alpha = 0.25, color = NA) +
+  scale_fill_manual(values = "goldenrod4", name = "") +
+  scale_color_manual(values = c("gold", "forestgreen"), name = "") +
+  theme_map()
+
+```
+
+## Adding a base map
+
+The `ggspatial` package lets you add raster images from OpenStreetMaps, which you can use as base maps. You should include attribution for these, if you use them. 
+
+### Default OSM basemap
+
+This the default OpenStreetMap basemap.
+
+```{r, message=FALSE}
+ggplot(playgrounds) +
+  annotation_map_tile(zoomin = 0, progress = "none") +
+  geom_sf(aes(color = "Playground")) +
+  geom_sf(data = gardens, aes(color = "Community Garden")) +
+  geom_sf(data = historic, aes(fill = "Historic District"), alpha = 0.25, color = NA) +
+  scale_fill_manual(values = "goldenrod4", name = "") +
+  scale_color_manual(values = c("gold", "forestgreen"), name = "") +
+  theme_void() +
+  labs(caption = "Map tiles and data by OpenStreetMap")
+
+```
+
+### Hotstyle
+
+Here's one called "hotstyle."
+
+
+```{r, message=FALSE}
+ggplot(playgrounds) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "hotstyle")  +
+  geom_sf() +
+  labs(caption = "Map tiles and data by OpenStreetMap")
+
+```
+
+### HikeBike
+
+This one is meant to emphasize bike routes and walking paths.
+
+```{r}
+ggplot(playgrounds) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "hikebike")  +
+  geom_sf() +
+  labs(caption = "Map tiles and data by OpenStreetMap")
+
+```
+
+### OSM Grayscale
+
+This is the same as the default OSM map, but in a light grayscale.
+
+```{r}
+ggplot(playgrounds) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "osmgrayscale")  +
+  geom_sf() +
+  labs(caption = "Map tiles and data by OpenStreetMap")
+
+```
+
+### Stamen black/white
+
+This is one of two basemaps designed by [Stamen Design](http://maps.stamen.com/){target="_blank}. 
+
+```{r}
+ggplot(playgrounds) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "stamenbw")  +
+  geom_sf() +
+  labs(caption = "Map tiles by Stamen Design. Data by OpenStreetMap")
+
+```
+
+### Stamen watercolor
+
+And here's another one from Stamen.
+
+```{r}
+ggplot(playgrounds) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "stamenwatercolor")  +
+  geom_sf() +
+  labs(caption = "Map tiles by Stamen Design. Data by OpenStreetMap")
+
+```
+
+### Cartodark
+
+Cartodark is so dark that it can be hard to read, but it makes the other features really easy to see.
+
+```{r}
+ggplot(playgrounds) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartodark")  +
+  geom_sf(color = "yellow") +
+  labs(caption = "Map tiles and data by OpenStreetMap")
+
+```
+
+### Cartolight
+
+Likewise with Cartolight. Helpful if you want to keep attention on the layers you've added to the basemap.
+
+```{r}
+ggplot(playgrounds) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartolight")  +
+  geom_sf() +
+  labs(caption = "Map tiles and data by OpenStreetMap")
+
+```
