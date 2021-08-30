@@ -112,6 +112,8 @@ dev.off()
 
 ```
 
+One reason you might want to save a plot as a PDF is to edit further using Adobe Illustrator or InDesign. The first fifteen minutes or so of [this video](https://harvard.zoom.us/rec/play/C850nveYWoQgpMagQuAkw2B3ADPV6W5zuLOg8m_3zzk7KhnbPayUbtkX_VTWHWUACaOeUJioiFDwQ-IZ.-5qE5KrqCOZQX13K?startTime=1599829600000){target="_blank"} from Fall 2020 demonstrates a workflow for using Adobe Illustrator to edit plots and maps created in R or in ArcGIS. 
+
 ## Changing point symbology
 
 Maybe I want to show playgrounds as something other that little black dots. I can adjust the shape, color, size,and transparency of points.
@@ -295,23 +297,20 @@ ggplot(playgrounds) +
 
 ```
 
+The last ten minutes or so of [this video](https://harvard.zoom.us/rec/play/C850nveYWoQgpMagQuAkw2B3ADPV6W5zuLOg8m_3zzk7KhnbPayUbtkX_VTWHWUACaOeUJioiFDwQ-IZ.-5qE5KrqCOZQX13K?startTime=1599829600000){target="_blank"} from Fall 2020 demonstrates the use of themes in both ggplot and in RMarkdown documents. 
+
 ## Adding a base map
 
-The `ggspatial` package lets you add raster images from OpenStreetMaps, which you can use as base maps. You should include attribution for these, if you use them. 
+The `ggspatial` package lets you add raster images from OpenStreetMaps, which you can use as base maps. You should include attribution for these, if you use them. An easy way to do that is to add a caption using the `labs()` function.
 
 ### Default OSM basemap
 
 This the default OpenStreetMap basemap.
 
-```{r, message=FALSE}
+```{r, message=FALSE, results='hide'}
 ggplot(playgrounds) +
   annotation_map_tile(zoomin = 0, progress = "none") +
-  geom_sf(aes(color = "Playground")) +
-  geom_sf(data = gardens, aes(color = "Community Garden")) +
-  geom_sf(data = historic, aes(fill = "Historic District"), alpha = 0.25, color = NA) +
-  scale_fill_manual(values = "goldenrod4", name = "") +
-  scale_color_manual(values = c("gold", "forestgreen"), name = "") +
-  theme_void() +
+  geom_sf() +
   labs(caption = "Map tiles and data by OpenStreetMap")
 
 ```
