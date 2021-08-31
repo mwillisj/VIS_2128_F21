@@ -46,6 +46,8 @@ By default, your code chunk will start with the line ````{r}`. If you want to, y
 
 So I'm starting the following code chunk with ````{r load packages, message=FALSE}`. This means the name of the code chunk is "load packages" and I don't want to see any of the package loading messages.
 
+
+
 ```{r load packages, message=FALSE}
 library(sf)
 library(tidyverse)
