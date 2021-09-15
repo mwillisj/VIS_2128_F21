@@ -1,0 +1,194 @@
+---
+title: "Zonal aggregation demonstration"
+author: "Carole Voulgaris"
+date: "9/15/2021"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load libraries
+
+```{r, message = FALSE}
+library(tigris)
+library(zonebuilder)
+library(tidyverse)
+library(sf)
+library(ggspatial)
+library(units)
+
+```
+# Read in data and create grids
+
+```{r, message = FALSE, results = "hide"}
+boundary <- st_read("https://bostonopendata-boston.opendata.arcgis.com/datasets/142500a77e2a4dbeb94a86f7e0b568bc_9.geojson?outSR=%7B%22latestWkid%22%3A2249%2C%22wkid%22%3A102686%7D", quiet = TRUE) %>%
+  st_transform(2249) # Transform to MA State plane
+
+schools <- st_read("https://bostonopendata-boston.opendata.arcgis.com/datasets/1d9509a8b2fd485d9ad471ba2fdb1f90_0.geojson?outSR=%7B%22latestWkid%22%3A2249%2C%22wkid%22%3A102686%7D", quiet = TRUE) %>%
+  st_transform(2249) # Transform to MA State plane
+
+tracts <- tracts(state = "MA", county = "Suffolk") %>%
+  st_transform(2249) # Transform to MA State plane
+
+tracts <- tracts[boundary,]
+  
+grid <- st_sf(st_make_grid(boundary, n = c(20,20))) # Create a grid over Boston
+grid <- grid[boundary,] # Filter for the cells that cover part of Boston
+
+# Create a clockboard over Boston
+clock <- zb_zone("Boston", distance = 0.5, distance_growth = 0, n_circles = 20) %>% 
+  st_transform(2249) # Transform to MA State plane
+clock <- clock[boundary,]  # Filter for  the cells that cover part of Boston
+
+```
+
+#  Show disagggregated points
+
+```{r, message = FALSE, results='hide'}
+plot1 <- ggplot(schools) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartolight")  +
+  geom_sf(size = 0.5, color = "darkred") +
+  labs(caption = "Map tiles and data by OpenStreetMap") +
+  theme_void()
+
+plot1
+
+jpeg("wk3_plot1.jpg", width = 7, height = 7, units = "in", res = 300)
+plot1
+dev.off()
+
+```
+
+# Show Tract boundaries
+
+```{r, message = FALSE, results='hide'}
+plot2 <- ggplot(schools) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartolight")  +
+  geom_sf(size = 0.5, color = "darkred") +
+  geom_sf(data = tracts, fill = NA) +
+  labs(caption = "Map tiles and data by OpenStreetMap") +
+  theme_void()
+
+plot2
+
+jpeg("wk3_plot2.jpg", width = 7, height = 7, units = "in", res = 300)
+plot2
+dev.off()
+
+```
+
+# Aggregate to tracts
+
+```{r, message = FALSE, results="hide"}
+tracts <- tracts %>%
+  mutate(num_schools = lengths(st_covers(tracts, schools))) %>%
+  mutate(area = set_units(st_area(tracts), km^2)) %>%
+  mutate(school_dens = as.numeric(num_schools / area))
+
+
+plot3 <- ggplot(tracts) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartolight")  +
+  geom_sf(data = tracts, alpha = 0.5, aes(fill = school_dens)) +
+  scale_fill_viridis_c(name = "Schools per square km") +
+  labs(caption = "Map tiles and data by OpenStreetMap") +
+  theme_void()
+
+plot3
+
+jpeg("wk3_plot3.jpg", width = 7, height = 7, units = "in", res = 300)
+plot3
+dev.off()
+
+```
+
+# Show grid
+
+```{r, message = FALSE, results='hide'}
+plot4 <- ggplot(schools) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartolight")  +
+  geom_sf(size = 0.5, color = "darkred") +
+  geom_sf(data = grid, fill = NA) +
+  labs(caption = "Map tiles and data by OpenStreetMap") +
+  theme_void()
+
+plot4
+
+jpeg("wk3_plot4.jpg", width = 7, height = 7, units = "in", res = 300)
+plot4
+dev.off()
+
+```
+
+# Aggregate to grid
+
+```{r, message = FALSE, results="hide"}
+grid <- grid %>%
+  mutate(num_schools = lengths(st_covers(grid, schools))) %>%
+  mutate(area = set_units(st_area(grid), km^2)) %>%
+  mutate(school_dens = as.numeric(num_schools / area))
+
+
+plot5 <- ggplot(grid) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartolight")  +
+  geom_sf(data = grid, alpha = 0.5, aes(fill = school_dens)) +
+  scale_fill_viridis_c(name = "Schools per square km") +
+  labs(caption = "Map tiles and data by OpenStreetMap") +
+  theme_void()
+
+plot5
+
+jpeg("wk3_plot5.jpg", width = 7, height = 7, units = "in", res = 300)
+plot5
+dev.off()
+
+```
+
+# Show clockboard zones
+
+```{r, message = FALSE}
+plot6 <- ggplot(schools) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartolight")  +
+  geom_sf(size = 0.5, color = "darkred") +
+  geom_sf(data = clock, fill = NA) +
+  labs(caption = "Map tiles and data by OpenStreetMap") +
+  theme_void()
+
+plot6
+
+jpeg("wk3_plot6.jpg", width = 7, height = 7, units = "in", res = 300)
+plot6
+dev.off()
+
+```
+
+
+
+# Aggregate to clockboard zones
+
+```{r, message = FALSE, results="hide"}
+clock <- clock %>%
+  mutate(num_schools = lengths(st_covers(clock, schools))) %>%
+  mutate(area = set_units(st_area(clock), km^2)) %>%
+  mutate(school_dens = as.numeric(num_schools / area))
+
+
+plot7 <- ggplot(clock) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "cartolight")  +
+  geom_sf(alpha = 0.5, aes(fill = school_dens)) +
+  scale_fill_viridis_c(name = "Schools per square km") +
+  labs(caption = "Map tiles and data by OpenStreetMap") +
+  theme_void()
+
+plot7
+
+jpeg("wk3_plot7.jpg", width = 7, height = 7, units = "in", res = 300)
+plot7
+dev.off()
+```

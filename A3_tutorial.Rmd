@@ -1,0 +1,344 @@
+---
+title: 'Week 4 Tutorial: Spatial Relationships'
+author: "Carole Voulgaris"
+date: "9/15/2021"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+I'll be using the following libraries for this tutorial:
+
+```{r, message=FALSE}
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(ggspatial)
+library(units)
+library(nngeo)
+```
+
+## Loading the data
+
+First, I'll read in all four datasets from the Boston Open Data portal (refer to the [video tutorial](https://harvard.zoom.us/rec/share/bwcxR8_MCa8zDh0Wp07W9v8AF5kTSi3wVre_tbqeQkPP8P19BbgSWese-1NdlxQ.OjMA6BPxeSnwHNQ-?startTime=1600374226000){target="_blank"} for how I got the urls to read from).
+
+Notice that I'm setting `quite=TRUE` on each call of `st_read()` function to avoid having a bunch of progress messages clutter up my knitted html file.
+
+```{r}
+nhoods <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/3525b0ee6e6b427f9aab5d0a1d0a1a28_0.kml", 
+                  quiet = TRUE) 
+
+water <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/2b3c0fa13b1c468eb702a3645fcc6bcb_5.kml", 
+                 quiet = TRUE)
+
+parking <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/962da9bb739f440ba33e746661921244_9.kml", 
+                   quiet = TRUE) 
+
+trees <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/ce863d38db284efe83555caf8a832e2a_1.kml", 
+                 quiet = TRUE) 
+
+```
+
+## Transforming the data
+
+I'll be doing some distance and area calculations, so it's important that my spatial data is stored using a projected coordinate system (i.e. with coordinates in feet or meters) rather than a geographic coordinate system (i.e. with coordinates in degrees latitude and longitude).
+
+I'll transform my data to the Massachusetts State Plane system (remember, you can find the PROJ4 strings for most coordinate systems at [spatialreference.org](https://spatialreference.org/){target="_blank"}). 
+
+```{r}
+MA_state_plane <- "+proj=lcc +lat_1=41.71666666666667 +lat_2=42.68333333333333 +lat_0=41 +lon_0=-71.5 +x_0=200000 +y_0=750000 +ellps=GRS80 +units=m +no_defs"
+
+nhoods <- nhoods %>%
+  st_transform(MA_state_plane)
+
+water <- water %>%
+  st_transform(MA_state_plane)
+
+parking <- parking %>%
+  st_transform(MA_state_plane)
+
+trees <- trees %>%
+  st_transform(MA_state_plane)
+```
+
+I'll draw a quick map now to see how the data look.
+
+```{r}
+ggplot(water) +
+  geom_sf(fill = "lightblue", color = NA) +
+  geom_sf(data = trees, color = "darkgreen", size = 0.01) +
+  geom_sf(data = parking, size = 0.01) +
+  geom_sf(data= nhoods, fill = NA, color = "gray") +
+  theme_map() +
+  annotation_scale()
+```
+
+## Creating a buffer
+
+The Massachusetts State Plane coordinate system I'm using is in units of meters (notice that the PROJ4 string says `+units=m` towards the end), so any distance/area calculations I do will be in meters or square meters.
+
+How many of the trees in Boston are within 30 meters of a parking meter?
+
+To figure this out, I'll create a new polygon layer to represent a 30-meter buffer around the parking meters. `st_buffer()` will create a circle around each parking meter, and I'm adding `st_union()` after that to dissolve the overlapping circles and combine them all into one multipolygon. 
+
+I'll plot a quick map to see how the buffer looks.
+
+```{r}
+parking_buffer <- st_buffer(parking, dist = 30) %>%
+  st_union()
+
+ggplot(parking_buffer) +
+  geom_sf() +
+  theme_map()
+```
+
+## Subsetting points with a polygon
+
+Now I can create a dataframe that only includes the trees that are located within the parking meter buffer.
+
+Then we can see how that subset of trees looks on the map. I'll draw them on top of the parking meter buffer.
+
+```{r}
+trees_parking <- trees[parking_buffer,]
+  
+ggplot(parking_buffer) +
+  geom_sf() +
+  geom_sf(data = trees_parking, 
+          color = "darkgreen", 
+          size = 0.01) +
+  theme_map()
+```
+
+Now I'll join my two trees dataframes. For any trees that are in the `trees` dataset, but not in `trees_parking`, there will be an NA value for the variables `Name.y` and `Description.y`. Based on which values of `Name.y` are NA, I can create a binary variable that indicates whether each tree is by a parking meter.
+
+```{r}
+trees <- trees %>%
+  st_join(trees_parking) %>%
+  mutate(by_parking = !is.na(Name.y))
+```
+
+Now we can calculate how many trees are within 30 meters of a parking meter:
+
+```{r}
+n_parking_trees <- sum(trees$by_parking)
+
+n_parking_trees
+```
+
+And what percent of all trees does this represent?
+
+```{r}
+n_trees <- length(trees$by_parking)
+
+pct_parking_trees <- n_parking_trees / n_trees
+
+pct_parking_trees
+```
+
+About 4 percent of all trees in Boston are within 30 meters of a parking meter.
+
+Let's show this on a pretty map!
+
+I'll include a note about the number and percent of trees near parking, and I want to add that note to the top left corner of the map. To find the coordinates of the top left corner, I can use `st_bbox()` to get the extents of one of my layers (I'll use the tree layer because it covers the most area).
+
+```{r}
+left_side  <- st_bbox(trees)$xmin
+top_side <- st_bbox(trees)$ymax
+
+ggplot(water) +
+  geom_sf(fill = "lightblue", color = NA) +
+  geom_sf(data = trees, size = 0.01,
+          aes(color = by_parking)) +
+  scale_color_manual(values = c("lightgreen", "darkgreen"),
+          name = "Boston Trees\nby distance to a parking meter", 
+          labels = c("No parking meter within 30 m",
+                     "Parking meter within 30 m")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side, 
+           y = top_side, 
+           label = paste("Of the ", 
+                         prettyNum(n_trees, big.mark = ","),
+                         " trees in Boston\n", 
+                         prettyNum(n_parking_trees, big.mark = ","),
+                         " (", 
+                         prettyNum(100*pct_parking_trees, digits = 0),
+                         "%) are within 30\nmeters of a parking meter.",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "cornsilk1"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+
+## Counting points in a polygon
+
+What if I wanted to know how many trees are in each Boston neighborhood?
+
+`st_covers()` will return a list of the trees in each neighborhood. By using `lengths()` to get the length of each of those lists, I can get the number of trees in each neighborhood and add that as a column to my neighborhoods dataframe.
+
+Then, I can use that new variable to make a chloropleth map.
+
+```{r}
+nhoods <- nhoods %>%
+  mutate(num_trees = lengths(st_covers(nhoods, trees)))
+
+ggplot(nhoods) +
+  geom_sf(color = NA, 
+          aes(fill = num_trees)) +
+  scale_fill_viridis_c(name = "Boston neighborhoods\nby number of trees",
+                       breaks = breaks <- seq(0, 30000, by = 5000),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "trees")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+
+## Calculating areas and densities
+
+Maybe I'm more interested in the density of trees (the number of trees per square km). To calculate that, I'd need to find the area of each neighborhood using `st_area()`.
+
+`st_area()` will calculate the areas in square meters because those are the units of the coordinate system we're using. Square kilometers might be more useful, so I'll use `set_units()` to convert from square meters to square kilometers.
+
+The result will be a particular data type that includes units, which can trip up ggplot() when it creates the legend, so I'll use `as.numeric()` to convert to just regular numbers.
+
+```{r}
+nhoods <- nhoods %>%
+  mutate(area = set_units(st_area(nhoods), km^2)) %>%
+  mutate(tree_dens = as.numeric(num_trees / area))
+
+ggplot(nhoods) +
+  geom_sf(color = NA, 
+          aes(fill = tree_dens)) +
+    scale_fill_viridis_c(name = 
+                           "Boston neighborhoods\nby tree density",
+                       breaks = breaks <- seq(0, 4000, by = 500),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "trees per square km")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.position = "right",
+    legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+## Finding the closest point
+
+Maybe I want to know how far each parking meter is from a tree.
+
+`st_nn()` will return the row number (from the trees dataframe) of the nearest tree and, if I set `returnDist=TRUE`, it will also return the distance to the closest tree. I don't really care which tree it is (a tree is a tree, right?), so I'll just use `st_nn()$dist` to get the distances.
+
+It returns the distance in a weird format, so I'm adding a second mutate statement to make sure it's treated as a number.
+
+```{r, message=FALSE, results='hide'}
+parking <- parking %>%
+  mutate(tree_dist = st_nn(parking, trees, 
+                           returnDist = TRUE)$dist) %>%
+  mutate(tree_dist = as.numeric(tree_dist))
+```
+
+Now I can calculate the average distance from a parking meter to the nearest tree.
+
+```{r}
+avg_tree_dist <- mean(parking$tree_dist)
+
+avg_tree_dist
+```
+
+And I can also create a map to represent how far each parking meter is from a tree. I'm using `coord_sf()` to set the map extents to just the area where the parking meters are.
+
+```{r}
+right_side <- st_bbox(parking)$xmax
+left_side  <- st_bbox(parking)$xmin
+top_side <- st_bbox(parking)$ymax
+bottom_side <- st_bbox(parking)$ymin
+
+
+ggplot(water) +
+  geom_sf(fill = "lightblue", color = NA) +
+  geom_sf(data = parking, size = 0.1,
+          aes(color = tree_dist)) +
+  coord_sf(xlim = c(left_side, right_side), 
+           ylim = c(bottom_side, top_side), expand = FALSE) +
+  scale_color_viridis_c(name = 
+                          "Boston Parking meters\nby distance to a tree") +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side + 300, 
+           y = top_side - 550, 
+           label = paste("On average, a Boston parking meter\nis ", 
+                         prettyNum(avg_tree_dist, digits = 3),
+                         " meters from a tree.",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "cornsilk1"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+## Identifying overlapping polygons
+
+Maybe I'd like to know which neighborhoods have bodies of water in them. `st_overlaps()` works the same as `st_covers()` but instead of telling me the number of features contained by each neighborhood, it tells me the number of features that overlaps each neighborhood.
+
+```{r}
+nhoods <- nhoods %>%
+  mutate(num_water = lengths(st_overlaps(nhoods, water))) %>%
+  mutate(has_water = num_water > 0)
+```
+
+How many neighborhoods overlap with bodies of water?
+
+```{r}
+n_water_nhoods <- sum(nhoods$has_water)
+
+n_water_nhoods
+```
+
+```{r}
+left_side  <- st_bbox(water)$xmin
+top_side <- st_bbox(water)$ymax
+
+ggplot(water) +
+  geom_sf(fill = "lightblue", color = NA) +
+  geom_sf(data = nhoods,
+          aes(fill = has_water)) +
+  scale_fill_manual(values = c("cornsilk1", "darkseagreen1"),
+          name = "Boston Neighborhoods\nby presence of a body of water", 
+          labels = c("Neighborhood without\nan overlapping body of water",
+                     "Neighborhood with an\noverlapping body of water")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side, 
+           y = top_side - 1000, 
+           label = paste(n_water_nhoods ,
+                         "of Boston's", 
+                         length(nhoods$Name),
+                         "neighborhoods contain\nor overlap with", 
+                         "a body of water."),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "gray"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
