@@ -1,5 +1,5 @@
 ---
-title: 'Week 4 Tutorial: Spatial Relationships'
+title: 'Week 3 Tutorial: Spatial Relationships'
 author: "Carole Voulgaris"
 date: "9/15/2021"
 output: 
@@ -248,6 +248,12 @@ Maybe I want to know how far each parking meter is from a tree.
 It returns the distance in a weird format, so I'm adding a second mutate statement to make sure it's treated as a number.
 
 ```{r, message=FALSE, results='hide'}
+#bikeshr <- bikeshr %>%
+#  mutate(bcrash_dist = st_nn(bikeshr, bcrashes17, 
+#                           returnDist = TRUE)$dist) %>%
+#  mutate(bcrash_dist = as.numeric(bcrash_dist))
+
+
 parking <- parking %>%
   mutate(tree_dist = st_nn(parking, trees, 
                            returnDist = TRUE)$dist) %>%
