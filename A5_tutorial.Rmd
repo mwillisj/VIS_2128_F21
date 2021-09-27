@@ -1,5 +1,5 @@
 ---
-title: "Networks and Access"
+title: "Raster data"
 author: "Carole Voulgaris"
 date: "9/24/2021"
 output: 
@@ -14,362 +14,117 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-In this tutorial, I'll be demonstrating how to calculate and visualize accessibility using the R5 routing engine developed by [Conveyal](https://conveyal.com/learn){target="_blank"}.
+This tutorial focuses on working with raster data. Most of the spatial data we've been working with in class so far has been vector data (points, polygons, and lines). The raster data you've worked with has been images, including basemap tiles from OpenStreetMaps and the historic map images you georeferenced in Assignment 2. 
 
-# Setup
+A raster layer is a matrix or grid with x and y values to indicate a location on a map and z value that indicates some other characteristics that can vary continuously across space. For an image file, the z value indicates a color (an image file is often three raster files indicating the degree of red, green, and blue, respectively). Other raster layers might contain different information, such as elevation, temperature, or air quality.
 
-The r5r package runs a Java application in the background, and you'll need to have the Java SE Development Kit 11 installed on your computer for it to work. You can install it (for free) from Oracle  [here](https://www.oracle.com/java/technologies/javase-jdk11-downloads.html){target="_blank"}.
-
-You'll also need to increase the amount of memory R will allocate to Java processes using `options()` before you load your libraries.
-
+We will be working with the following packages for this tutorial:
 
 ```{r, message=FALSE}
-options(java.parameters = "-Xmx2G")
-
-library(r5r)
-library(osmextract)
-library(tidyverse)
+library(stars)
 library(sf)
-library(ggthemes)
-library(ggspatial)
+library(tidyverse)
+library(osmextract)
 library(tigris)
-library(wesanderson)
-library(tidytransit)
 ```
 
-## Loading networks
+# Creating a raster layer from a polygon layer
 
-In this example, we'll be looking at access to schools in San Luis Obispo, California. We'll need data on the transit network and the street network. The local transit agency is SLO Transit, and we'll get their data from their [GTFS](https://gtfs.org/){target="_blank"} feed. The following code will create a folder called "networks" in your working directory, then download the transit netowrk data and save it to that folder.
+In the Assignment 3 tutorial, we did create a grid containing values that varied continuously across space, but we stored it as a layer of polygons. Let's load that layer now and convert it to a raster layer.
 
-Note that you only need to run this code chunk once. If you already have a networks directory with a GTFS file in it, there's no need to run this code again.
+The polygon layer is a 100x100 grid, so I'll use the same resolution for the raster layer.
 
-
-```{r, warning=FALSE}
-dir.create("networks")
-
-download.file("https://app.mecatran.com/urb/ws/feed/c2l0ZT1zbG90cmFuc2l0O2NsaWVudD1zZWxmO2V4cGlyZT07dHlwZT1ndGZzO2tleT0zZTMwMzM1OTRiMTE2NzA0N2IxNjQwNjA0ZjQwMGMzMzdiM2E1MTQ0", file.path("networks","SLOgtfs.zip"), mode = "wb", quiet=TRUE)
-
-```
-
-Now we need data on the street network. We can get that from OpenStreetMaps, using the `osmextract` package. We'll use `oe_match()` to find a url for the San Luis Obispo street network. `oe_match()` will save a download url to the variable called `SLO_file` and print a message with the name of the provider.
+I can use the `plot()` function to take a quick look at the raster.
 
 ```{r}
-SLO_file <- oe_match("San Luis Obispo")
+access_poly <- st_read("SLO_access.geojson", quiet=TRUE)
+
+access_raster <- st_rasterize(access_poly["accessibility"], 
+                              nx = 100, ny = 100) 
+plot(access_raster)
+
 ```
 
-Now, we can use `oe_read()` to both download the data to the networks folder and to read in a layer of lines representing the street network. The function will read all line features within the area (including rivers, for example), so we'll filter to only include lines that are maked as "highways" (all roads and even pedestrian paths are coded as highways in OpenStreetMap).
+Or I can use ggplot to add it to a layer showing the street network
 
-```{r}
+```{r, message=FALSE, warning=FALSE, results='hide'}
+SLO_city_limits <- places("California") %>%
+  filter(NAME == "San Luis Obispo") 
+
+SLO_file <- oe_match("San Luis Obispo", quiet = TRUE)
 
 SLO_streets <- oe_read(SLO_file$url, 
                    provider = "openstreetmap_fr", 
                    download_directory = "networks", 
                    layer = "lines", 
                    quiet = TRUE) %>%
-  filter(!is.na(highway)) 
-```
-
-Let's take a look at those streets by plotting a quick map.
-
-```{r}
-ggplot(SLO_streets) +
-  geom_sf()
-
-```
-
-Since I'm familiar with the area, I can see that osmextract has returned the roads for all of San Luis Obsipo County, and I'm really only interested in the City of San Luis Obispo. 
-
-I'll load a polygon of the city limits using the `places()` function from the `tigris` package. That returns the boundaries for all the census-designated places (including cities) in California, and I'll filter to keep just the one for San Luis Obispo. I'll use `st_transform()` to make sure the city limits polygon is in the same coordinate system as the streets layer.
-
-Then I'll select only the streets within the city limits and create a new map of those. Note that this doesn't affect the network I downloaded and saved to my networks folder, which still includes all the roads in the whole county.
-
-I'll project these in the California State Plane coordinate system (Zone 5). By using coord_sf() instead of st_transform(), I'm only changing how the data are displayed -- the underlying data is still in latitude/longitude coordinates.
-
-```{r, message=FALSE, results='hide', warning=FALSE}
-CA5_state_plane <- "+proj=lcc +lat_1=34.03333333333333 +lat_2=35.46666666666667 +lat_0=33.5 +lon_0=-118 +x_0=2000000 +y_0=500000 +ellps=GRS80 +units=m +no_defs"
-
-SLO_city_limits <- places("California") %>%
-  filter(NAME == "San Luis Obispo") %>%
-  st_transform(crs = st_crs(SLO_streets))
-
-
-SLO_streets <- SLO_streets[SLO_city_limits,]
+  filter(!is.na(highway)) %>%
+  st_transform(crs = st_crs(SLO_city_limits)) %>%
+  st_filter(SLO_city_limits)
 
 ggplot(SLO_streets) +
-  geom_sf() +
-  coord_sf(crs = CA5_state_plane) 
-
-```
-
-## Load school locations
-
-I can also use OpenStreetMaps to get the locations of all the schools in San Luis Obispo. Note that OpenStreetMaps is crowdsourced data, and all the information in there has been added by volunteers. It's a pretty good representation of the street network in much of the world (but not everywhere). The reliability of other data is not as good. To find all the features that can be available from OpenStreetMap, you can refer to the OpenStreemMap wiki [here](https://wiki.openstreetmap.org/wiki/Map_features){target="_blank"}.
-
-I'll read in all the points from OpenStreetMaps in San Luis Obispo County and keep only the ones labeled as schools. I'll also filter the data to only include points within the city limits.
-
-The r5r package requires that point datasets have a column called "id", so I'm also renaming the osm_id column to be called "id."
-
-```{r}
-
-SLO_schools <- oe_read(SLO_file$url, 
-                   provider = "openstreetmap_fr", 
-                   download_directory = "networks", 
-                   layer = "points", 
-                   quiet = TRUE) %>%
-  filter(str_detect(other_tags, '"amenity"=>"school"')) %>%
-  st_filter(SLO_city_limits) %>%
-  rename(id = osm_id)
-
-```
-
-## Set up grid of points
-
-We'll want to caculate the travel time from those schools to every other point in the city. To represent every point, I'll make a grid of points that covers the whole city. I'm also going to create an ID column for that grid. In the `st_make_grid()` function, I'm setting `square = FALSE` to create a hexagonal grid. If I were to leave that argument out, it would create a grid of squares.
-
-Note that an alternative to creating a grid of points would be to use a set of points representing a set of small features that covers the study area reasonably well. Parcels or census blocks could work nicely.
-
-I'll be using the grid to display the travel time values, but I'll use the centroids of the cells as the points to compute travel times to.
-
-```{r, warning=FALSE}
-grid <- st_sf(st_make_grid(SLO_city_limits, 
-                           square = FALSE, 
-                           n = c(100,100),
-                           what = "polygons")) %>%
-  st_filter(SLO_city_limits) 
-
-colnames(grid) <- "geometry"
-st_geometry(grid) <- "geometry"
-
-grid <- grid %>%
-  mutate(id = seq(1, length(grid$geometry), by=1))
-
-grid_points <- st_centroid(grid)
-
-ggplot(grid) +
-  geom_sf() +
-  geom_sf(data = grid_points, alpha = 0.5) +
-  geom_sf(data = SLO_streets) +
-  coord_sf(crs = CA5_state_plane) + 
-  theme_map()
-
-```
-
-## Set up r5r core
-
-Now we'll setup a network that incorporates both the transit network and the street network that are saved in the "networks" directory.
-
-```{r, message=FALSE}
-r5r_core <- setup_r5("networks", verbose = FALSE)
-
-```
-
-# Calculate travel time matrix
-
-We're going to calculate the travel time from each school to all the points in the grid. This is for transit (I'm adding walking to allow people to walk up to 1000 meters to access a transit stop). Other options include "BICYCLE" and "CAR".
-
-This is based on the current transit schedules, so we need to indicate what day and time someone would be making this trip. I've set it for my anniversary at 2pm.
-
-```{r, warning=FALSE}
-
-ttm <- travel_time_matrix(r5r_core = r5r_core,
-                          origins = SLO_schools,
-                          destinations = grid_points,
-                          mode = c("WALK", "TRANSIT"),
-                          departure_datetime = as.POSIXct("15-11-2021 14:00:00",
-                                 format = "%d-%m-%Y %H:%M:%S"),
-                          max_walk_dist = 1000,
-                          max_trip_duration = 480,
-                          verbose = FALSE)
-
-
-```
-
-That created a data frame with a row for each combination of origins (schools) and destinations (points throughout the city), with three columns: one indicating the origin, one indicating the destination, and one indicating the travel time (by a combination of walking and transit) between those two points.
-
-I can use `pivot_wider()` to reshape this data frame into one that has a row for each point in our grid and a column for each school. 
-
-Then I can merge that data frame to the grid points so I can show those travel times on the map. I want a map that represents the minimum travel time to _any_ school, so I'll use `mutate()` to create a new column with the minimum travel time across all schools. The matrix has an `NA` value for trips that aren't possible by transit (we've set the maximum travel time 4 hours). In order to caculate a minimum, we'll replace those NA values with 999. After merging the data, I need to specify that this is still spatial data be using `st_geometry()`
-to indicated which column has the spatial data.
-
-```{r}
-tt_wide <- ttm %>%
-  pivot_wider(names_from = fromId, 
-              names_prefix = "from", values_from = travel_time) %>%
-  rename(id = toId) %>% 
-  merge(grid) %>%
-  replace(is.na(.), 999) %>%
-  rowwise() %>%
-  mutate(from_any = min(c_across(starts_with("from")), na.rm = TRUE))
-
-st_geometry(tt_wide) <- "geometry"
-```
-
-Now I can plot my grid on a map showing the continuous variation in travel time to a school for any point in the city.
-
-```{r}
-ggplot(SLO_streets) +
-  geom_sf(data = tt_wide, 
-          aes(fill = from_any), 
-          color = NA) +
-  geom_sf(alpha = 0.5) +
-  scale_fill_gradient2(low = "green", mid = "yellow", high = "red", 
-                       midpoint = 30,
-        name = "Transit Travel\ntime to the\nnearest school\n(minutes)") +
-  coord_sf(crs = CA5_state_plane) +
-  theme_map()
-
-```
-
-# Create isochrones
-
-I can create isochrones by subsetting the grid based on bins of travel time values and using `st_union()` to combine polygons within each bin into a single polygon.
-
-```{r}
-iso_pallete <- wes_palette("Zissou1", n = 5)
-
-iso10min <- tt_wide[tt_wide$from_any < 11,] %>%
-  st_union()
-
-iso20min <- tt_wide[tt_wide$from_any < 21,] %>%
-  st_union()
-
-iso30min <- tt_wide[tt_wide$from_any < 31,] %>%
-  st_union()
-
-ggplot(SLO_streets) +
-  geom_sf(data = iso30min, 
-          aes(fill = "Area within 30 minutes"), 
-          color = NA) +
-  geom_sf(data = iso20min, 
-          aes(fill = "Area within 20 minutes"), 
-          color = NA) +
-  geom_sf(data = iso10min, 
-          aes(fill = "Area within 10 minutes"), 
-          color = NA) +
-  geom_sf(alpha = 0.5) +
-  scale_fill_manual(values = c(iso_pallete[1], 
-                               iso_pallete[3],
-                               iso_pallete[5]),
-        name = "Transit Travel\ntime to the\nnearest school\n(minutes)") +
-  coord_sf(crs = CA5_state_plane) +
-  theme_map()
-```
-
-You can calcuate the areas of these polygons, and you can also use the methods you practiced in [Assignment 3](https://c-voulgaris.github.io/VIS_2128_F21/A3_tutorial.html{target="_blank"}) to analyze what's located within them.
-
-# Calculate accessibility
-
-When you have a lot of locations you're interested in, describing accessibility in terms of isochrones can get complicated because you end up with a lot of overlapping isochrones, and you're not as interested in whether there's an amenity with 10 minutes, but in how many you can reach within 10 minutes.
-
-The r5r package also has a function called `accessibility()` that's useful for that type of question. Let's look at the bicycle accessiblity of transit stops.
-
-## Loading transit stop locations
-
-I've already saved the transit network (as a GTFS feed) to my networks folder, and I can use the `tidytransit` package to extract the locations of all the transit stops.
-
-The `read_gtfs()` function reads in all the data describing transit routes, stops and schedules. I'll save that data into an object called `SLO_transit`, which includes a data frame with details about each stop, including its latitude and longitude coordinates. We'll use `st_as_sf()` to convert that to a points layer with the same coordinate reference system as the grid we created previously.
-
-```{r}
-SLO_transit <- read_gtfs(file.path("networks", "SLOgtfs.zip"))
-
-transit_stops <- st_as_sf(SLO_transit$stops, 
-                          coords = c("stop_lon", "stop_lat"), 
-                          crs =st_crs(grid))
-
-```
-
-## Set up grid of points with stops data
-
-Now, we'll count how many transit stops are within each grid cell and create a new set of grid points that includes an attribute indicating how many transit stops are in each grid cell.
-
-I'm using `as.character()` to force R to treat the number of stops as a discrete variable (since there are only three possible values) rather than a continuous variable.
-
-```{r, warning=FALSE}
-transit_grid <- grid %>%
-  mutate(num_stops = lengths(st_covers(grid, transit_stops)))
-
-transit_points <- st_centroid(transit_grid)
-
-ggplot(transit_points) +
-  geom_sf(aes(color = as.character(num_stops))) +
-  scale_color_manual(values = c("gray", "cornsilk", "lightgreen"), 
-                    name = "Number of\ntransit stops") +
+  geom_stars(data = access_raster) +
+  geom_sf(color = "white", alpha = 0.2) +
+  scale_fill_viridis_c(na.value = NA, 
+                       option="A",
+                       name = "Bike access to\ntransit stops") +
   theme_void()
 ```
 
-## Calculate accessibility
+It looks pretty similar to the polygon layer we used to create the raster, but you'll notice that it takes up a lot less memory. Rasters are generally the most efficient way to store a single variable that varies continuously across space.
 
-Now I'll calculate the accessibilty. By using a step decay function with a cutoff of 11 and the mode set to `"WALK"`, I'm specifying that I want to know the number of transit stops with a ten-minute walk from each point in the grid.
+# Creating a vector layer from a raster layer
 
-I can join the result to my orginal grid to show the results on a map.
+There are a few different ways you can create a vector layer from a raster layer. 
 
-```{r, message=FALSE, warning=FALSE, results='hide'}
-transit_access <- accessibility(r5r_core,
-                        origins = transit_points,
-                        destinations = transit_points,
-                        mode = "WALK",
-                        opportunities_colname = "num_stops",
-                        decay_function = "step",
-                        cutoffs = 11,
-                        departure_datetime = as.POSIXct("15-11-2021 14:00:00",
-                                 format = "%d-%m-%Y %H:%M:%S"),
-                        max_walk_dist = 500,
-                        time_window = 60,
-                        percentiles = 50,
-                        verbose = FALSE) %>%
-  mutate(id = as.numeric(from_id)) %>%
-  merge(grid)
+## Points from grid cells
 
-st_geometry(transit_access) <- "geometry"
-
-ggplot(transit_access) +
-  geom_sf(aes(fill = accessibility), color = NA) +
-  scale_fill_viridis_c(name = "Transit stops\nwithin 10-minutes\nwalk") +
-  coord_sf(crs = CA5_state_plane) +
-  theme_void()
-```
-
-One thing about a step decay function is that it implies that someone who lives 19 minutes from a transit stop has access and someone who lives 21 minutes from that stop has no access. You can also use a continuous decay function that assumes everyone in the study area has some degree of access to all the stops, but they have less access to the ones that are further away. 
-
-One possible continuous function available in the `accessibility()` function is the half-life exponential function (`"exponential"`). When we use theis function with a cutoff value of 5 minutes, it implies that accessibility decreases exponentially with distance, and will decrease by one-half for every five minutes.
-
-```{r, message=FALSE, warning=FALSE, results='hide'}
-transit_access2 <- accessibility(r5r_core,
-                        origins = transit_points,
-                        destinations = transit_points,
-                        mode = "WALK",
-                        opportunities_colname = "num_stops",
-                        decay_function = "exponential",
-                        cutoffs = 5,
-                        departure_datetime = as.POSIXct("15-11-2021 14:00:00",
-                                 format = "%d-%m-%Y %H:%M:%S"),
-                        max_walk_dist = 500,
-                        time_window = 60,
-                        percentiles = 50,
-                        verbose = FALSE) %>%
-  mutate(id = as.numeric(from_id)) %>%
-  merge(grid)
-
-st_geometry(transit_access2) <- "geometry"
-
-ggplot(transit_access2) +
-  geom_sf(aes(fill = accessibility), color = NA) +
-  scale_fill_viridis_c(name = "Accessiblity score") +
-  coord_sf(crs = CA5_state_plane) +
-  theme_void()
-```
-
-The R5 core has been running in the background this whole time and using a lot of memory. Before wrap up, let's turn it off.
+There might be a reason to create a point for each grid cell. You can do that using `st_as_sf()`. I'll plot the points with a really small point size. Otherwise , the points won't look much different than the raster.
 
 ```{r}
-stop_r5(r5r_core)
-rJava::.jgc(R.gc = TRUE)
+access_points <- st_as_sf(access_raster, as_points = TRUE)
+
+ggplot(SLO_streets) +
+  geom_sf(data = access_points, aes(color = accessibility), size = 0.1) +
+  scale_color_viridis_c(na.value = NA, 
+                       option="A",
+                       name = "Bike access to\ntransit stops") +
+  theme_void()
 
 ```
 
+## Polygons from grid cells
 
-I'm also going to save that grid off accessibilty values for use in the next assignment.
+I can also create a polygon from each grid cell. This would essentially just recreate the polygon layer I used to create the raster initially, but on a square grid rather that a hexagonal grid. I can also set `merge=TRUE` so that adjacent areas with the same value are merged into a single polygon.
 
 ```{r}
-st_write(transit_access2, 'SLO_access.geojson', append=FALSE, quiet=TRUE)
+access_poly2 <- st_as_sf(access_raster, as_points = FALSE, merge = TRUE)
+
+ggplot(SLO_streets) +
+  geom_sf(data = access_poly2, aes(fill = accessibility), color = 'gray') +
+  scale_fill_viridis_c(na.value = NA, 
+                       option="A",
+                       name = "Bike access to\ntransit stops") +
+  theme_void()
+
 ```
+
+## Contours
+
+In the example above, the polygon boundaries appear as countours. I can also just create contours directly from the raster.
+
+```{r}
+access_contours <- st_contour(access_raster, contour_lines = TRUE, 
+                              breaks = c(0,2,4,6,8))
+
+ggplot(SLO_streets) +
+  geom_sf(color = "gray") +
+  geom_sf(data = access_contours, aes(color = accessibility), fill = NA) +
+  scale_color_viridis_c(na.value = NA, 
+                       option="A",
+                       breaks = c(0,2,4,6,8),
+                       name = "Bike access to\ntransit stops") +
+  theme_void()
+
+```
+
