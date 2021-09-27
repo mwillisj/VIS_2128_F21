@@ -263,9 +263,9 @@ library(ggspatial)
 library(tigris)
 library(wesanderson)
 library(tidytransit)</code></pre>
-<div id="loading-networks" class="section level2">
-<h2>Loading networks</h2>
-<p>In this example, we’ll be looking at access to schools in San Luis Obispo, California. We’ll need data on the transit network and the street network. The local transit agency is SLO Transit, and we’ll get their data from their <a href="https://gtfs.org/" target="_blank">GTFS</a> feed. The following code will create a folder called “networks” in your working directory, then download the transit netowrk data and save it to that folder.</p>
+<div id="load-networks" class="section level2">
+<h2>Load networks</h2>
+<p>In this example, we’ll be looking at access to schools in San Luis Obispo, California. We’ll need data on the transit network and the street network. The local transit agency is SLO Transit, and we’ll get their data from their <a href="https://gtfs.org/" target="_blank">GTFS</a> feed. The following code will create a folder called “networks” in your working directory, then download the transit network data and save it to that folder.</p>
 <p>Note that you only need to run this code chunk once. If you already have a networks directory with a GTFS file in it, there’s no need to run this code again.</p>
 <pre class="r"><code>dir.create(&quot;networks&quot;)
 
@@ -320,7 +320,8 @@ ggplot(SLO_streets) +
 </div>
 <div id="set-up-grid-of-points" class="section level2">
 <h2>Set up grid of points</h2>
-<p>We’ll want to caculate the travel time from those schools to every other point in the city. To represent every point, I’ll make a grid of points that covers the whole city. I’m also going to create an ID column for that grid.</p>
+<p>We’ll want to caculate the travel time from those schools to every other point in the city. To represent every point, I’ll make a grid of points that covers the whole city. I’m also going to create an ID column for that grid. In the <code>st_make_grid()</code> function, I’m setting <code>square = FALSE</code> to create a hexagonal grid. If I were to leave that argument out, it would create a grid of squares.</p>
+<p>Note that an alternative to creating a grid of points would be to use a set of points representing a set of small features that covers the study area reasonably well. Parcels or census blocks could work nicely.</p>
 <p>I’ll be using the grid to display the travel time values, but I’ll use the centroids of the cells as the points to compute travel times to.</p>
 <pre class="r"><code>grid &lt;- st_sf(st_make_grid(SLO_city_limits, 
                            square = FALSE, 
@@ -348,9 +349,6 @@ ggplot(grid) +
 <h2>Set up r5r core</h2>
 <p>Now we’ll setup a network that incorporates both the transit network and the street network that are saved in the “networks” directory.</p>
 <pre class="r"><code>r5r_core &lt;- setup_r5(&quot;networks&quot;, verbose = FALSE)</code></pre>
-<pre><code>## Using cached version from C:/Users/cav223/Documents/R/win-library/4.1/r5r/jar/r5-v6.2-all_20210408.jar</code></pre>
-<pre><code>## 
-## Using cached network.dat from networks/network.dat</code></pre>
 </div>
 </div>
 <div id="calculate-travel-time-matrix" class="section level1">
@@ -367,7 +365,7 @@ ggplot(grid) +
                           max_trip_duration = 480,
                           verbose = FALSE)</code></pre>
 <p>That created a data frame with a row for each combination of origins (schools) and destinations (points throughout the city), with three columns: one indicating the origin, one indicating the destination, and one indicating the travel time (by a combination of walking and transit) between those two points.</p>
-<p>I can use <code>pivot_wider()</code> to reshape this data frame into one that has a row for point in our grid and a column for each school.</p>
+<p>I can use <code>pivot_wider()</code> to reshape this data frame into one that has a row for each point in our grid and a column for each school.</p>
 <p>Then I can merge that data frame to the grid points so I can show those travel times on the map. I want a map that represents the minimum travel time to <em>any</em> school, so I’ll use <code>mutate()</code> to create a new column with the minimum travel time across all schools. The matrix has an <code>NA</code> value for trips that aren’t possible by transit (we’ve set the maximum travel time 4 hours). In order to caculate a minimum, we’ll replace those NA values with 999. After merging the data, I need to specify that this is still spatial data be using <code>st_geometry()</code> to indicated which column has the spatial data.</p>
 <pre class="r"><code>tt_wide &lt;- ttm %&gt;%
   pivot_wider(names_from = fromId, 
@@ -447,10 +445,9 @@ transit_stops &lt;- st_as_sf(SLO_transit$stops,
 <pre class="r"><code>transit_grid &lt;- grid %&gt;%
   mutate(num_stops = lengths(st_covers(grid, transit_stops)))
 
-transit_points &lt;- st_centroid(transit_grid)</code></pre>
-<pre><code>## Warning in st_centroid.sf(transit_grid): st_centroid assumes attributes are
-## constant over geometries of x</code></pre>
-<pre class="r"><code>ggplot(transit_points) +
+transit_points &lt;- st_centroid(transit_grid)
+
+ggplot(transit_points) +
   geom_sf(aes(color = as.character(num_stops))) +
   scale_color_manual(values = c(&quot;gray&quot;, &quot;cornsilk&quot;, &quot;lightgreen&quot;), 
                     name = &quot;Number of\ntransit stops&quot;) +
@@ -515,6 +512,8 @@ ggplot(transit_access2) +
 <pre class="r"><code>stop_r5(r5r_core)</code></pre>
 <pre><code>## r5r_core has been successfully stopped.</code></pre>
 <pre class="r"><code>rJava::.jgc(R.gc = TRUE)</code></pre>
+<p>I’m also going to save that grid of accessibility values for use in the next assignment.</p>
+<pre class="r"><code>st_write(transit_access2, &#39;SLO_access.geojson&#39;, append=FALSE, quiet=TRUE )</code></pre>
 </div>
 </div>
 

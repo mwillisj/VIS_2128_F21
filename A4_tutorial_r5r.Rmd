@@ -37,9 +37,9 @@ library(wesanderson)
 library(tidytransit)
 ```
 
-## Loading networks
+## Load networks
 
-In this example, we'll be looking at access to schools in San Luis Obispo, California. We'll need data on the transit network and the street network. The local transit agency is SLO Transit, and we'll get their data from their [GTFS](https://gtfs.org/){target="_blank"} feed. The following code will create a folder called "networks" in your working directory, then download the transit netowrk data and save it to that folder.
+In this example, we'll be looking at access to schools in San Luis Obispo, California. We'll need data on the transit network and the street network. The local transit agency is SLO Transit, and we'll get their data from their [GTFS](https://gtfs.org/){target="_blank"} feed. The following code will create a folder called "networks" in your working directory, then download the transit network data and save it to that folder.
 
 Note that you only need to run this code chunk once. If you already have a networks directory with a GTFS file in it, there's no need to run this code again.
 
@@ -158,7 +158,7 @@ ggplot(grid) +
 
 Now we'll setup a network that incorporates both the transit network and the street network that are saved in the "networks" directory.
 
-```{r}
+```{r, message=FALSE}
 r5r_core <- setup_r5("networks", verbose = FALSE)
 
 ```
@@ -186,7 +186,7 @@ ttm <- travel_time_matrix(r5r_core = r5r_core,
 
 That created a data frame with a row for each combination of origins (schools) and destinations (points throughout the city), with three columns: one indicating the origin, one indicating the destination, and one indicating the travel time (by a combination of walking and transit) between those two points.
 
-I can use `pivot_wider()` to reshape this data frame into one that has a row for point in our grid and a column for each school. 
+I can use `pivot_wider()` to reshape this data frame into one that has a row for each point in our grid and a column for each school. 
 
 Then I can merge that data frame to the grid points so I can show those travel times on the map. I want a map that represents the minimum travel time to _any_ school, so I'll use `mutate()` to create a new column with the minimum travel time across all schools. The matrix has an `NA` value for trips that aren't possible by transit (we've set the maximum travel time 4 hours). In order to caculate a minimum, we'll replace those NA values with 999. After merging the data, I need to specify that this is still spatial data be using `st_geometry()`
 to indicated which column has the spatial data.
@@ -365,4 +365,11 @@ The R5 core has been running in the background this whole time and using a lot o
 stop_r5(r5r_core)
 rJava::.jgc(R.gc = TRUE)
 
+```
+
+
+I'm also going to save that grid of accessibility values for use in the next assignment.
+
+```{r, warning=FALSE}
+st_write(transit_access2, 'SLO_access.geojson', append=FALSE, quiet=TRUE )
 ```
