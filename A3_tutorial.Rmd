@@ -197,7 +197,7 @@ ggplot(nhoods) +
   geom_sf(color = NA, 
           aes(fill = num_trees)) +
   scale_fill_viridis_c(name = "Boston neighborhoods\nby number of trees",
-                       breaks = breaks <- seq(0, 30000, by = 5000),
+                       breaks = breaks <- seq(0, 30000, by = 5000), 
                        labels = paste(prettyNum(breaks, big.mark = ","),
                                       "trees")) +
   annotation_scale(location = "br") +
