@@ -84,8 +84,8 @@ There might be a reason to create a point for each grid cell. You can do that us
 ```{r}
 access_points <- st_as_sf(access_raster, as_points = TRUE)
 
-ggplot(SLO_streets) +
-  geom_sf(data = access_points, aes(color = accessibility), size = 0.1) +
+ggplot(access_points) +
+  geom_sf(aes(color = accessibility), size = 0.1) +
   scale_color_viridis_c(na.value = NA, 
                        option="A",
                        name = "Pedestrian access to\ntransit stops") +
@@ -100,8 +100,8 @@ I can also create a polygon from each grid cell. This would essentially just rec
 ```{r}
 access_poly2 <- st_as_sf(access_raster, as_points = FALSE, merge = TRUE)
 
-ggplot(SLO_streets) +
-  geom_sf(data = access_poly2, aes(fill = accessibility), color = 'gray') +
+ggplot(access_poly2) +
+  geom_sf(aes(fill = accessibility), color = 'gray') +
   scale_fill_viridis_c(na.value = NA, 
                        option="A",
                        name = "Pedestrian access to\ntransit stops") +
@@ -119,7 +119,7 @@ access_contours <- st_contour(access_raster, contour_lines = TRUE,
 
 ggplot(SLO_streets) +
   geom_sf(color = "gray") +
-  geom_sf(data = access_contours, aes(color = accessibility), fill = NA) +
+  geom_sf(data = access_contours, aes(color = accessibility)) +
   scale_color_viridis_c(na.value = NA, 
                        option="A",
                        breaks = c(0,2,4,6,8),
