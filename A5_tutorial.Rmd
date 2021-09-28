@@ -67,7 +67,7 @@ ggplot(SLO_streets) +
   geom_sf(color = "white", alpha = 0.2) +
   scale_fill_viridis_c(na.value = NA, 
                        option="A",
-                       name = "Bike access to\ntransit stops") +
+                       name = "Pedestrian access to\ntransit stops") +
   theme_void()
 ```
 
@@ -88,7 +88,7 @@ ggplot(SLO_streets) +
   geom_sf(data = access_points, aes(color = accessibility), size = 0.1) +
   scale_color_viridis_c(na.value = NA, 
                        option="A",
-                       name = "Bike access to\ntransit stops") +
+                       name = "Pedestrian access to\ntransit stops") +
   theme_void()
 
 ```
@@ -104,7 +104,7 @@ ggplot(SLO_streets) +
   geom_sf(data = access_poly2, aes(fill = accessibility), color = 'gray') +
   scale_fill_viridis_c(na.value = NA, 
                        option="A",
-                       name = "Bike access to\ntransit stops") +
+                       name = "Pedestrian access to\ntransit stops") +
   theme_void()
 
 ```
@@ -123,7 +123,7 @@ ggplot(SLO_streets) +
   scale_color_viridis_c(na.value = NA, 
                        option="A",
                        breaks = c(0,2,4,6,8),
-                       name = "Bike access to\ntransit stops") +
+                       name = "Pedestrian access to\ntransit stops") +
   theme_void()
 
 ```
