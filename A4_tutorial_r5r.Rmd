@@ -120,6 +120,12 @@ SLO_schools <- oe_read(SLO_file$url,
   st_filter(SLO_city_limits) %>%
   rename(id = osm_id)
 
+ggplot(SLO_streets) +
+  geom_sf(color = 'gray') +
+  geom_sf(data = SLO_schools, color = "darkblue") +
+  coord_sf(crs = CA5_state_plane)  +
+  theme_void()
+
 ```
 
 ## Set up grid of points
@@ -147,8 +153,8 @@ grid_points <- st_centroid(grid)
 
 ggplot(grid) +
   geom_sf() +
-  geom_sf(data = grid_points, alpha = 0.5) +
-  geom_sf(data = SLO_streets) +
+  geom_sf(data = SLO_schools, color = "darkblue") +
+  geom_sf(data = SLO_streets, alpha = 0.2) +
   coord_sf(crs = CA5_state_plane) + 
   theme_map()
 
