@@ -1,0 +1,253 @@
+---
+title: "R5R Example for Jaixing, China"
+author: "Carole Voulgaris"
+date: "10/1/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load libraries
+
+Be sure and increase the Java memory allocation (`options(java.parameters = "-Xmx2G")`) before you load the r5r package.
+
+```{r, message=FALSE}
+options(java.parameters = "-Xmx2G")
+
+library(r5r)
+library(tidyverse)
+library(sf)
+library(ggthemes)
+library(tigris)
+library(osmdata)
+```
+
+# Download street network data
+
+Jiaxing, China is a prefecture-level city comprising seven county-level divisions. It is the 137th-largest city in China. Its urban area has a population of about 1.5 million people, and its overall population is about 5 million people, making it similar in size to Phoenix, Arizona (the fifth largest city in the United States). 
+
+The osmextract package is useful for downloading data for commonly studied places, but Jianxing is not commonly studied, so the only way to get data including Jiaxing from osmextract is to download the street network for all of China, with a file size that is too large too easily work with.
+
+The osmdata package can download data from OpenStreetMap based on a bounding box defined by minimum and maximum latitude/longitude coordinates. This is the approach we'll use here.
+
+The code below will create a directory called "jiaxing" in your working directory and save an osm file to that directory. 
+
+**To use this data with the r5r package, you will need to convert the `*.osm` file to a `*.pbf` file. I did this using the [osmconvert program](https://wiki.openstreetmap.org/wiki/Osmconvert){target="_blank"}.**
+
+```{r, warning = FALSE}
+dir.create("jiaxing")
+
+opq(bbox = c(119.880969607532,
+             30.1914932622785, 
+             121.700154482894, 
+             31.074977995)) %>%
+  add_osm_feature(key = 'highway') %>%
+  osmdata_xml(file = 'jiaxing/osmdata_network.osm')
+```
+
+
+# Read and plot roads and bike rental facilities
+
+Once I've concerted the osm file to a pbf file, I can use `st_read()` to bring the line data in to my RStudio environment. I can also use `st_read()` to extract all the points tagged a bike rental facilities.
+
+Then, I'll plot the street network and the bike rental facilities on a map.
+
+```{r, message=FALSE}
+jiaxing_streets <- st_read("jiaxing/osmdata_network_01.pbf", layer = "lines", quiet=TRUE)
+
+jiaxing_bike_rental <- st_read("jiaxing/osmdata_network_01.pbf", layer = "points", quiet=TRUE) %>%
+    filter(str_detect(other_tags, '"amenity"=>"bicycle_rental"')) %>%
+  rename(id = osm_id)
+
+ggplot(jiaxing_streets) +
+  geom_sf() +
+  geom_sf(data = jiaxing_bike_rental, color = "red") +
+  theme_void()
+```
+
+# Create a grid
+
+I want to calculate the travel time by bike from any location in Jiaxing to any of the bike rental facilities shown above (maybe I want to know what parts of the city I can see on my rented bike). First, I'll create a grid of points covering the entire area of my street network.
+
+```{r, warning=FALSE}
+grid <- st_sf(st_make_grid(jiaxing_streets, 
+                           square = FALSE, 
+                           n = c(100,100),
+                           what = "polygons"))
+
+colnames(grid) <- "geometry"
+st_geometry(grid) <- "geometry"
+
+grid <- grid %>%
+  mutate(id = seq(1, length(grid$geometry), by=1))
+
+grid_points <- st_centroid(grid)
+
+ggplot(grid) +
+  geom_sf() +
+  geom_sf(data = jiaxing_bike_rental, color = "red") +
+  geom_sf(data = jiaxing_streets, alpha = 0.2) +
+  theme_map()
+
+```
+
+# Setup r5r core
+
+Then I'll set up my r5r core to prepare to do my travel time calculations.
+
+```{r, message=FALSE}
+r5r_core <- setup_r5("jiaxing", verbose = FALSE)
+
+```
+# Build travel time matrix
+
+Now I'll calculate a matrix of travel times by bike. I'll assume I only plan on renting a bike for couple hours, so I'm only interested in locations that are reachable by bike within an hour of the bike rental facility. I'll set `max_trip_duration` to 60 minutes.
+
+```{r, warning=FALSE}
+ttm <- travel_time_matrix(r5r_core = r5r_core,
+                          origins = jiaxing_bike_rental,
+                          destinations = grid_points,
+                          mode = "BICYCLE",
+                          max_trip_duration = 60,
+                          verbose = FALSE)
+
+
+```
+
+
+# Reshape travel time matrix
+
+To display these travel times on a map, I'll reshape the data to have a row for each grid cell and a column for each rental facility, with an additional column indicating the minimum distance to any rental facility.
+
+```{r}
+tt_wide <- ttm %>%
+  pivot_wider(names_from = fromId, 
+              names_prefix = "from", values_from = travel_time) %>%
+  rename(id = toId) %>% 
+  merge(grid) %>%
+  replace(is.na(.), 999) %>%
+  rowwise() %>%
+  mutate(from_any = min(c_across(starts_with("from")), na.rm = TRUE))
+
+st_geometry(tt_wide) <- "geometry"
+```
+
+# Plot travel time
+
+And now I'll plot my results on a map.
+
+```{r}
+ggplot(jiaxing_streets) +
+  geom_sf() +
+  geom_sf(data = tt_wide, 
+          aes(fill = from_any), 
+          color = NA, alpha = 0.5) +
+  geom_sf(data = jiaxing_bike_rental, color = "blue") +
+  scale_fill_gradient2(low = "green", mid = "yellow", high = "red", 
+                       midpoint = 30,
+        name = "Bike Travel\ntime to the\nnearest bike\nrental facility\n(minutes)") +
+  theme_void()
+
+```
+
+# Changing the map extents
+
+And we see that very little of the city is reachable within one hour of any bike rental facility (this is a big city, and all the bike rental facilities are concentrated in the southwest part of the city). Maybe we'd like to zoom in on just the area around the bike rental facilities.
+
+```{r}
+limits <- st_bbox(tt_wide)
+
+ggplot(jiaxing_streets) +
+  geom_sf(data = tt_wide, 
+          aes(fill = from_any), 
+          color = NA) +
+  geom_sf(data = jiaxing_bike_rental, color = "blue") +
+  geom_sf(alpha = 0.5) +
+  scale_fill_gradient2(low = "green", mid = "yellow", high = "red", 
+                       midpoint = 30,
+        name = "Bike Travel\ntime to the\nnearest bike\nrental facility\n(minutes)") +
+  theme_void() +
+  coord_sf(xlim=c(limits["xmin"], limits["xmax"]),
+           ylim=c(limits["ymin"], limits["ymax"]))
+
+```
+
+# Recalculate travel time at a finer resolution
+
+At this zoom level, the grid we're working with seems pretty coarse. Lets make a finer grid that covers just this area and recalculate the travel time matrix. ([Enhance](https://www.youtube.com/watch?v=LhF_56SxrGk&t=53s){target="_blank"}!)
+
+## Make a new grid over the extents of the 60-minute bikeshed
+
+```{r, warning=FALSE}
+grid_fine <- st_sf(st_make_grid(tt_wide, 
+                           square = FALSE, 
+                           n = c(100,100),
+                           what = "polygons"))
+
+colnames(grid_fine) <- "geometry"
+st_geometry(grid_fine) <- "geometry"
+
+grid_fine <- grid_fine %>%
+  mutate(id = seq(1, length(grid_fine$geometry), by=1))
+
+grid_points_fine <- st_centroid(grid_fine)
+
+ggplot(jiaxing_streets) +
+  geom_sf(data = tt_wide, 
+          aes(fill = from_any), 
+          color = NA) +
+  geom_sf(alpha = 0.5) +
+  geom_sf(data = grid_fine, fill = NA) +
+  scale_fill_gradient2(low = "green", mid = "yellow", high = "red", 
+                       midpoint = 30,
+        name = "Bike Travel\ntime to the\nnearest bike\nrental facility\n(minutes)") +
+  theme_void() +
+  coord_sf(xlim=c(limits["xmin"], limits["xmax"]),
+           ylim=c(limits["ymin"], limits["ymax"]))
+
+```
+
+## Recalculate travel times
+
+```{r, message=FALSE, warning=FALSE, results='hide'}
+ttm_fine <- travel_time_matrix(r5r_core = r5r_core,
+                          origins = jiaxing_bike_rental,
+                          destinations = grid_points_fine,
+                          mode = "BICYCLE",
+                          max_trip_duration = 60,
+                          verbose = FALSE)
+
+tt_wide_fine <- ttm_fine %>%
+  pivot_wider(names_from = fromId, 
+              names_prefix = "from", values_from = travel_time) %>%
+  rename(id = toId) %>% 
+  merge(grid_fine) %>%
+  replace(is.na(.), 999) %>%
+  rowwise() %>%
+  mutate(from_any = min(c_across(starts_with("from")), na.rm = TRUE))
+
+st_geometry(tt_wide_fine) <- "geometry"
+
+ggplot(jiaxing_streets) +
+  geom_sf(data = tt_wide_fine, 
+          aes(fill = from_any), 
+          color = NA) +
+  geom_sf(data = jiaxing_bike_rental, color = "blue") +
+  geom_sf(alpha = 0.5) +
+  scale_fill_gradient2(low = "green", mid = "yellow", high = "red", 
+                       midpoint = 30,
+        name = "Bike Travel\ntime to the\nnearest bike\nrental facility\n(minutes)") +
+  theme_void() +
+  coord_sf(xlim=c(limits["xmin"], limits["xmax"]),
+           ylim=c(limits["ymin"], limits["ymax"]))
+
+```
+
+Remember to stop the r5r core when you're finished.
+
+```{r, message=FALSE}
+stop_r5(r5r_core)
+rJava::.jgc(R.gc = TRUE)
+```
