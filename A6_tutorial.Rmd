@@ -1,0 +1,317 @@
+---
+title: "Interactive maps and census data"
+author: "Carole Voulgaris"
+date: "9/24/2021"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The purpose of this tutorial is twofold: 
+
+1. To demonstrate how to use the `tidycensus` package to load data from the United States Census
+2. To demonstrate how to use the `leaflet` package to create interactive maps in R
+
+
+We will be using the following packages.
+
+```{r, message=FALSE}
+library(leaflet)
+library(sf)
+library(tidyverse)
+library(tidycensus)
+library(ggthemes)
+library(ggspatial)
+library(htmlwidgets)
+library(tidytransit)
+```
+
+# Getting and installing your census API key
+
+You can find a nice introduction to the `tidycensus` package [here](https://walker-data.com/tidycensus/articles/basic-usage.html){target="_blank"}.
+
+`tidycensus` returns data from the Census API, and it requires an API key. You'll need to sign up for an API key here. Once you have an API key, type `census_api_key("YOUR API KEY GOES HERE", install=TRUE)` into your console and press enter. You should run this line in your console rather than in your RMarkdown file for two reasons:
+
+1. You only need to run that code once.
+2. You don't want the script you share with others to have your API key in it, because you don't want everyone else using your key.
+
+# Loading census data
+
+Two of the most useful functions in `tidycensus` are `get_decennial()` (which returns data from the decennial census) and `get_acs()` (which returns data from the American Community Survey).
+
+When you run these functions, you'll need to indicate what geography (e.g. what unit of analysis) you want the data for, and what variables you want. You can find a list of available geographies [here](https://walker-data.com/tidycensus/articles/basic-usage.html#geography-in-tidycensus-1){target="_blank"}. 
+
+For a list of available variables, you can use the `load_variables()` function in your console (again, not in your script, since it isn't necessary to run it every time you run your code). This 
+
+For example, if I want a list of all the variables available from the 2010 Decennial Census, I would type `vars2010 <- load_variables(2010, "sf1")`. This would create a dataframe called `dec_vars` with a list of all the variable names available from Summary File 1 (sf1) of the 2020 census, including descriptions of each variable (Summary File 1 is usually what you want - the other option is "sf3" for Summary File 3, which is more similar to the type of data you'd find in the American Community Survey).
+
+Full data from the 2020 Census are not available yet.
+
+If I want a list of all the variables from the 5-year sample of the American Community Survey (ACS) from 2017, I would type `acs_vars <- load_variables(2017, "acs5")`. This would create a data frame called `acs_vars` with a list of all the variable names available from the 2017 5-year ACS sample, including descriptions of each (you could also use acs1 or acs3 to get the 1-year or 3-year samples).
+
+Once you've create data frame with the set of variable names you'll be choosing from, you can search within those to find the variables you're interested in.
+
+I'd like to create a map that shows the percentage of Black residents in each census block in Suffolk County, Massachusetts, based on the 2010 census. To get that, I'll need the total population of each block (P008001), as well as the total population of Black residents (P008004 - note that this variable does not include people who have indicated multiple races, although that data is available). Since I want to map this data, I'm setting `geometry=TRUE` so that the function will return a spatial dataset that includes the census block boundaries. `output = "wide"` means I want one row for each census block and a column for each variable. The alternative (and the default) is `output = "tidy"` which will create a separate row for each combination of census block and variable (this can be useful for facet maps).
+
+
+```{r, message=FALSE, results='hide'}
+Suffolk_Black <- get_decennial(geography = "block",
+                          state = "MA", county = "Suffolk",
+                          year = 2010,
+                          output = "wide",
+                          variables = c(tot_pop = 'P008001',
+                                        bl_pop = 'P008004'),
+                          geometry = TRUE)
+
+```
+
+If I want to know the percent of residents of each census block that identify exclusively as Black (not as multiracial), I can create a new variable using the mutate function. I'll call my new variable `pct_Black` and calculate it by dividing the Black population by the total population. I'm also going to filter the data to exclude blocks with a population of zero.
+
+```{r, message=FALSE, results='hide'}
+Suffolk_Black <- Suffolk_Black %>%
+  mutate(pct_Black = bl_pop / tot_pop) %>%
+  filter(tot_pop > 0)
+```
+
+And now I can use ggplot to show my results on a map.
+
+```{r, message=FALSE}
+MA_state_plane <- "+proj=lcc +lat_1=42.68333333333333 +lat_2=41.71666666666667 +lat_0=41 +lon_0=-71.5 +x_0=200000.0001016002 +y_0=750000 +ellps=GRS80 +datum=NAD83 +to_meter=0.3048006096012192 +no_defs"
+
+ggplot(Suffolk_Black) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "stamenbw") +
+  geom_sf(color = NA, aes(fill = pct_Black), alpha = 0.7) +
+  coord_sf(crs = MA_state_plane) +
+  scale_fill_continuous(low="cornsilk", high="darkgreen", 
+                       na.value=NA,
+                       name = "Percent of population\nidentifying as Black alone",
+                       breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1),
+                       labels = c("0", "20%", "40%", "60%", "80%", "100%")) +
+  theme_void() 
+```
+
+There's something unsatisfying about this map. You can see that there's a lot of detail there, and you're inclined to zoom in to take a closer look. 
+
+# Creating an interactive map
+
+We can use the Leaflet package to view this data on an interactive map. 
+
+When you've been doing all your maps in ggplot, you'll need to get used to a similar, but slightly different syntax for Leaflet.
+
+First, I'll create a color palette. This website gives a detailed tutorial on how to do that, for categorical and continuous variables.  https://rstudio.github.io/leaflet/colors.html
+
+The I'll set up the map with the `leaflet()` function. `addProviderTiles()` is analogous to `annotation_map_tile()` in the ggplot version of this map. 
+
+```{r, warning=FALSE}
+MA_Black_palette <- colorNumeric(c("cornsilk", "darkgreen"), Suffolk_Black$pct_Black)
+
+Black_map1 <- leaflet(Suffolk_Black) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(stroke = FALSE, fillOpacity = 0.7,
+    color = ~MA_Black_palette(pct_Black)) %>%
+  addLegend("bottomright", pal = MA_Black_palette, values = ~pct_Black,
+    title = "Percent of population<br/>identifying as Black alone",
+    labFormat = labelFormat(suffix = "%"),
+    opacity = 1)
+
+Black_map1
+
+```
+
+## Adding popups and labels
+
+With the ability to zoom in comes the sense that I should be able to find out more about a particular block. I can add labels and pop-ups to give that detail. A label will appear when you hover over a feature. A popup will appear when you click on it. It can be helpful to set highlight options for polygons to make it very clear which features the labels and popups refer to.
+
+```{r, warning=FALSE}
+Black_map2 <- leaflet(Suffolk_Black) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(color = ~MA_Black_palette(pct_Black), stroke = FALSE, fillOpacity = 0.7,
+              highlightOptions = highlightOptions(fillColor = "darkorange", fillOpacity = 0.9),
+              label = "This is a label",
+              popup = "This is a popup") %>%
+    addLegend("bottomright", pal = MA_Black_palette, values = ~pct_Black,
+    title = "Percent of population<br/>identifying as Black alone",
+    labFormat = labelFormat(suffix = "%"),
+    opacity = 1)
+
+Black_map2
+```
+
+Of course, having the same text for all labels defeats the purpose. You probably want to populate them with information from the variables in your dataset.
+
+```{r, warning=FALSE}
+Black_map3 <- leaflet(Suffolk_Black) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(color = ~MA_Black_palette(pct_Black), stroke = FALSE, fillOpacity = 0.7,
+              highlightOptions = highlightOptions(fillColor = "darkorange", fillOpacity = 0.9),
+              label = Suffolk_Black$NAME,
+              popup = paste("Total population: ", Suffolk_Black$tot_pop, "<br/>",
+                            "Black population: ", Suffolk_Black$bl_pop, " (", 
+                            round(Suffolk_Black$pct_Black * 100, 1), "%)", sep = "")) %>%
+    addLegend("bottomright", pal = MA_Black_palette, values = ~pct_Black,
+    title = "Percent of population<br/>identifying as Black alone",
+    labFormat = labelFormat(suffix = "%"),
+    opacity = 1)
+
+Black_map3
+
+```
+
+## Save map as a stand-alone html file
+
+```{r}
+saveWidget(Black_map3, file="inter_black.html")
+```
+
+
+# Loading American Community Survey (ACS) data
+
+The American Community Survey is conducted every year and surveys a sample of the population. 3-year and 5-year ACS estimate aggregate responses from three and five years respectively to increase the sample size.
+
+I'm going to use ACS data from 2019 to create an interactive map of the share of workers in each census tract in Suffolk County that takes public transportation to work. 
+
+First, I need to load the data. 
+
+```{r, message=FALSE, results='hide'}
+transit_Suffolk <- get_acs(geography = "tract", county = "Suffolk", state = "MA", 
+                           year = 2019, survey = "acs5",
+                           variables = c(tot_wrkrs = "B08301_001", pt_wrkrs = "B08301_010"),
+                           output = "wide", geometry = TRUE) 
+
+```
+
+Notice that I've created variable names within the get_acs() function, but tidycensus appends an E or an M to the end of each column. This is because the ACS surveys a sample of the population (rather than the entire population, as the census aims to do), so all the data you get has a margin of error associated with it. `tot_wrkrsE` is the estimtated number of workers in the tract, and `tot_wrkrsM` is the margin or error (for 90-percent confidence) associated with the estimate. 
+
+For our purposes, we'll ignore the uncertainty in our data and just use the estimates.
+
+I'll use the mutate function to calculate the share of workers that commutes by transit (rounded to the nearest tenth of a percent). Before I do that, I'll also drop the margin of error columns and filter my data to only include tracts with workers living in them.
+
+```{r}
+transit_Suffolk <- transit_Suffolk %>%
+  select(-tot_wrkrsM, -pt_wrkrsM) %>%
+  filter(tot_wrkrsE > 0) %>%
+  mutate(pct_transit = round(100 * pt_wrkrsE / tot_wrkrsE, 1))
+
+```
+
+Now I can plot those values on an interactive map.
+
+```{r, warning=FALSE}
+transit_palette <- colorNumeric(c("pink", "lightblue"),
+                                transit_Suffolk$pct_transit)
+
+transit_map <- leaflet(transit_Suffolk) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(fillColor = ~transit_palette(pct_transit), weight = 1, color = "gray", fillOpacity = 0.7,
+              highlightOptions = highlightOptions(fillColor = "yellow", fillOpacity = 0.9),
+              label = transit_Suffolk$NAME,
+              popup = paste("Total workers: ", transit_Suffolk$tot_wrkrsE, "<br/>",
+                            "Transit commuters: ", transit_Suffolk$pt_wrkrsE, " (", 
+                            transit_Suffolk$pct_transit, "%)", sep = "")) %>%
+    addLegend("bottomright", pal = transit_palette, values = ~pct_transit,
+    title = "Percent of workers<br/>communting by transit",
+    labFormat = labelFormat(suffix = "%"),
+    opacity = 1)
+
+transit_map
+```
+
+# Adding point data (markers and circles)
+
+It might also be interesting to see where transit stops are located in relation to places with high transit use. I can use the tidytransit package to load the MBTA GTFS feed. Note that my transit_stations object is just a data frame with columns for latitude and longitude coordinates, rather than an sf object with a geometry column. The Leaflet package only uses sf data (a data frame with coordinates in a geometry column) for polygons and lines. Points need to just be data with columns for x an y coordinates.
+
+## Loading stop locations from GTFS
+
+```{r}
+MBTA_url <- feedlist[feedlist$t == "MBTA GTFS",]$url_d
+
+MBTA <- read_gtfs(MBTA_url)
+
+transit_stops <- MBTA$stops
+
+transit_stations <- transit_stops %>%
+  filter(location_type == 1)
+```
+
+## Converting point data to and from a csv file
+
+If the data I have is sf point data, I can convert it to a data frame with a column for each coordinate by writing it to a csv file and reading it back in.
+
+In the chunk below, I'm converting my transit stations to sf points.
+
+```{r}
+station_sf <- st_as_sf(transit_stations, 
+                          coords = c("stop_lon", "stop_lat"), 
+                          crs = "WGS84")
+```
+
+And here, I'll convert it back to a csv file and read it in as a data frame.
+
+```{r, message=FALSE, results='hide'}
+st_write(station_sf, "MBTA_stations.csv", layer_options = "GEOMETRY=AS_XY", append = FALSE)
+
+stations_2 <- read_csv("MBTA_stations.csv")
+```
+
+## Displaying markers
+
+I can display point data as markers.
+
+```{r}
+transit_map2 <- transit_map %>%
+  addMarkers(lng = transit_stations$stop_lon,
+             lat = transit_stations$stop_lat,
+             popup = transit_stations$stop_name)
+
+transit_map2
+```
+
+## Setting map extents
+
+The extents of the MBTA system are more extensive than Suffolk County, and you have to Zoom in to see our lovely polygons under all those markers. We can set the extents of the map. We can also limit where users can pan to.
+
+```{r}
+limits <- st_bbox(transit_Suffolk)
+
+transit_map3 <- transit_map2 %>%
+   fitBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) %>%
+   setMaxBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) 
+
+transit_map3
+```
+
+
+## Displaying points as circle markers
+
+The default marker style is big and kind of clutters the map. You can also use circle markers.
+
+```{r}
+transit_map4 <- transit_map %>%
+  addCircleMarkers(stroke = FALSE, color = "black", fillOpacity = 1, radius = 3,
+                   lng = transit_stations$stop_lon,
+                   lat = transit_stations$stop_lat,
+                   popup = transit_stations$stop_name) %>%
+   fitBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) %>%
+   setMaxBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) 
+
+transit_map4
+```
