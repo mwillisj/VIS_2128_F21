@@ -118,7 +118,8 @@ Black_map1 <- leaflet(Suffolk_Black) %>%
     color = ~MA_Black_palette(pct_Black)) %>%
   addLegend("bottomright", pal = MA_Black_palette, values = ~pct_Black,
     title = "Percent of population<br/>identifying as Black alone",
-    labFormat = labelFormat(suffix = "%"),
+    labFormat = labelFormat(suffix = "%",
+                            transform = function(x) 100 * x),
     opacity = 1)
 
 Black_map1
@@ -138,7 +139,8 @@ Black_map2 <- leaflet(Suffolk_Black) %>%
               popup = "This is a popup") %>%
     addLegend("bottomright", pal = MA_Black_palette, values = ~pct_Black,
     title = "Percent of population<br/>identifying as Black alone",
-    labFormat = labelFormat(suffix = "%"),
+    labFormat = labelFormat(suffix = "%",
+                            transform = function(x) 100 * x),
     opacity = 1)
 
 Black_map2
@@ -157,7 +159,8 @@ Black_map3 <- leaflet(Suffolk_Black) %>%
                             round(Suffolk_Black$pct_Black * 100, 1), "%)", sep = "")) %>%
     addLegend("bottomright", pal = MA_Black_palette, values = ~pct_Black,
     title = "Percent of population<br/>identifying as Black alone",
-    labFormat = labelFormat(suffix = "%"),
+    labFormat = labelFormat(suffix = "%",
+                            transform = function(x) 100 * x),
     opacity = 1)
 
 Black_map3
