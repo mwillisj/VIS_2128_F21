@@ -37,7 +37,7 @@ library(tidytransit)
 
 You can find a nice introduction to the `tidycensus` package [here](https://walker-data.com/tidycensus/articles/basic-usage.html){target="_blank"}.
 
-`tidycensus` returns data from the Census API, and it requires an API key. You'll need to sign up for an API key here. Once you have an API key, type `census_api_key("YOUR API KEY GOES HERE", install=TRUE)` into your console and press enter. You should run this line in your console rather than in your RMarkdown file for two reasons:
+`tidycensus` returns data from the Census API, and it requires an API key. You'll need to sign up for an API key [here](http://api.census.gov/data/key_signup.html){target="_blank"}. Once you have an API key, type `census_api_key("YOUR API KEY GOES HERE", install=TRUE)` into your console and press enter. You should run this line in your console rather than in your RMarkdown file for two reasons:
 
 1. You only need to run that code once.
 2. You don't want the script you share with others to have your API key in it, because you don't want everyone else using your key.
